@@ -525,16 +525,32 @@ restore_resolvconf_generic() {
 
 modify_resolvconf_suse_netconfig()
 {
-	/sbin/netconfig modify -s vpnc -i "$TUNDEV" <<-EOF
-		INTERFACE='$TUNDEV'
-		DNSSERVERS='$INTERNAL_IP4_DNS'
-		DNSDOMAIN='$CISCO_DEF_DOMAIN'
-		EOF
+	# ugly hack to support NetworkManager setups in case you can't use NetworkManager plugin for OpenConnect
+	if nmcli c show --active | grep -q "$TUNDEV"; then
+		for s in $INTERNAL_IP4_DNS; do
+			echo "Telling nmcli to use DNS $s"
+			nmcli connection modify --temporary "$TUNDEV" +ipv4.dns $s
+		done
+		# needed to activate config, i.e. rewrite resolv.conf
+		nmcli connection up "$TUNDEV"
+	else
+		/sbin/netconfig modify -s vpnc -i "$TUNDEV" <<-EOF
+			INTERFACE='$TUNDEV'
+			DNSSERVERS='$INTERNAL_IP4_DNS'
+			DNSDOMAIN='$CISCO_DEF_DOMAIN'
+			EOF
+	fi
 }
 # Restore resolv.conf to old contents on Suse
 restore_resolvconf_suse_netconfig()
 {
-	/sbin/netconfig remove -s vpnc -i "$TUNDEV"
+	# ugly hack to support NetworkManager setups in case you can't use NetworkManager plugin for OpenConnect
+	if nmcli c show --active | grep -q "$TUNDEV"; then
+		echo "Telling nmcli to forget $TUNDEV configuration"
+		nmcli c delete $TUNDEV
+	else
+		/sbin/netconfig remove -s vpnc -i "$TUNDEV"
+	fi
 }
 
 # === resolv.conf handling via /sbin/modify_resolvconf (Suse) =====================
